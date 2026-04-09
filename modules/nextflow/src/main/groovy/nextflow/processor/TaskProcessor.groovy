@@ -94,6 +94,7 @@ import nextflow.script.params.TupleOutParam
 import nextflow.script.params.ValueInParam
 import nextflow.script.params.ValueOutParam
 import nextflow.script.params.v2.ProcessInput
+import nextflow.script.params.v2.ProcessRecordInput
 import nextflow.script.params.v2.ProcessTupleInput
 import nextflow.script.types.Record
 import nextflow.script.types.Tuple
@@ -1769,7 +1770,9 @@ class TaskProcessor {
         for( int i = 0; i < declaredInputs.getParams().size(); i++ ) {
             final param = declaredInputs.getParams()[i]
             final value = values[i]
-            if( param instanceof ProcessTupleInput && param.getType() == Record.class )
+            if( param instanceof ProcessRecordInput )
+                assignTaskNamedRecordInput(task, param, value, i)
+            else if( param instanceof ProcessTupleInput && param.getType() == Record.class )
                 assignTaskRecordInput(task, param, value, i)
             else if( param instanceof ProcessTupleInput && param.getType() == Tuple.class )
                 assignTaskTupleInput(task, param, value, i)
@@ -1829,6 +1832,27 @@ class TaskProcessor {
     }
 
     @CompileStatic
+    private void assignTaskNamedRecordInput(TaskRun task, ProcessRecordInput param, Object value, int index) {
+        if( value == null && !param.optional ) {
+            throw new ProcessUnrecoverableException("[${safeTaskName(task)}] input at index ${index} cannot be null")
+        }
+        if( value == null ) {
+            task.context.put(param.getName(), null)
+            task.setInput(param, null)
+            return
+        }
+        if( value !instanceof RecordMap ) {
+            throw new ProcessUnrecoverableException("[${safeTaskName(task)}] input at index ${index} expected a record but received: ${value} [${value.class.simpleName}]")
+        }
+        final recordParams = param.getComponents()
+        final record = value as Map
+        for( final recordParam : recordParams )
+            validateTaskInput(task, recordParam, record[recordParam.getName()], index)
+        task.context.put(param.getName(), value)
+        task.setInput(param, value)
+    }
+
+    @CompileStatic
     private void assignTaskRecordInput(TaskRun task, ProcessTupleInput param, Object value, int index) {
         if( value == null && !param.optional ) {
             throw new ProcessUnrecoverableException("[${safeTaskName(task)}] input at index ${index} cannot be null")
@@ -1863,6 +1887,13 @@ class TaskProcessor {
 
     @CompileStatic
     private void assignTaskInput(TaskRun task, ProcessInput param, Object value, int index) {
+        validateTaskInput(task, param, value, index)
+        task.context.put(param.getName(), value)
+        task.setInput(param, value)
+    }
+
+    @CompileStatic
+    private void validateTaskInput(TaskRun task, ProcessInput param, Object value, int index) {
         if( value == null && !param.optional ) {
             throw new ProcessUnrecoverableException("[${safeTaskName(task)}] input at index ${index} cannot be null -- append `?` to the type annotation to mark it as nullable")
         }
@@ -1872,8 +1903,6 @@ class TaskProcessor {
             if( expectedType != null && !isAssignableFrom(expectedType, actualType) )
                 log.warn "[${safeTaskName(task)}] invalid argument type at index ${index} -- expected a ${Types.getName(expectedType)} but got a ${Types.getName(actualType)}"
         }
-        task.context.put(param.getName(), value)
-        task.setInput(param, value)
     }
 
     private static boolean isAssignableFrom(Class targetType, Class sourceType) {

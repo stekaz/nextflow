@@ -62,6 +62,18 @@ class ProcessDslV2 extends ProcessBuilder {
     }
 
     /**
+     * Declare a named process record input.
+     *
+     * @param name
+     * @param components
+     * @param type
+     * @param optional
+     */
+    void _input_(String name, List<ProcessInput> components, Class type, boolean optional) {
+        inputs.addRecordParam(name, components, type, optional)
+    }
+
+    /**
      * Declare a process tuple input.
      *
      * @param components

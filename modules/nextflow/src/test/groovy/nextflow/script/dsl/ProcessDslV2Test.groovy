@@ -19,6 +19,8 @@ package nextflow.script.dsl
 import java.nio.file.Path
 
 import nextflow.script.BaseScript
+import nextflow.script.params.v2.ProcessInput
+import nextflow.script.params.v2.ProcessRecordInput
 import spock.lang.Specification
 /**
  *
@@ -56,6 +58,27 @@ class ProcessDslV2Test extends Specification {
         config.getInputs().getParams().get(2).name == 'y'
         config.getInputs().getParams().get(2).type == String
 
+    }
+
+    def 'should declare named record process inputs' () {
+
+        given:
+        def dsl = createDsl()
+        def config = dsl.getConfig()
+        def components = [
+            new ProcessInput('id', String, false),
+            new ProcessInput('fastq', Path, false)
+        ]
+
+        when:
+        dsl._input_('sample', components, nextflow.script.types.Record, false)
+
+        then:
+        config.getInputs().size() == 1
+        config.getInputs().getParams().get(0) instanceof ProcessRecordInput
+        (config.getInputs().getParams().get(0) as ProcessRecordInput).name == 'sample'
+        (config.getInputs().getParams().get(0) as ProcessRecordInput).components*.name == ['id', 'fastq']
+        (config.getInputs().getParams().get(0) as ProcessRecordInput).components*.type == [String, Path]
     }
 
     def 'should declare process outputs' () {
@@ -143,6 +166,30 @@ class ProcessDslV2Test extends Specification {
         config.memory == '10 GB'
         config.getInputs().getParams().size() == 2
         config.getOutputs().getParams().size() == 1
+    }
+
+    def 'should clone named record inputs' () {
+
+        given:
+        def dsl = createDsl()
+        def config = dsl.getConfig()
+        def components = [
+            new ProcessInput('id', String, false),
+            new ProcessInput('fastq', Path, false)
+        ]
+        dsl._input_('sample', components, nextflow.script.types.Record, false)
+
+        when:
+        def copy = config.clone()
+        def original = config.getInputs().getParams().get(0) as ProcessRecordInput
+        def cloned = copy.getInputs().getParams().get(0) as ProcessRecordInput
+
+        then:
+        cloned.name == 'sample'
+        cloned.components*.name == ['id', 'fastq']
+        !cloned.is(original)
+        !cloned.components.is(original.components)
+        !cloned.components[0].is(original.components[0])
     }
 
 }

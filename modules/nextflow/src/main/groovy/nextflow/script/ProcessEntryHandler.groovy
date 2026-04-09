@@ -30,7 +30,9 @@ import nextflow.script.params.InParam
 import nextflow.script.params.StdInParam
 import nextflow.script.params.TupleInParam
 import nextflow.script.params.v2.ProcessInput
+import nextflow.script.params.v2.ProcessRecordInput
 import nextflow.script.params.v2.ProcessTupleInput
+import nextflow.util.RecordMap
 
 /**
  * Helper class for process entry execution feature.
@@ -357,7 +359,11 @@ class ProcessEntryHandler {
         // Map declared inputs to command-line arguments
         List arguments = []
         for( final param : declaredInputs ) {
-            if( param instanceof ProcessTupleInput ) {
+            if( param instanceof ProcessRecordInput ) {
+                final value = getValueForRecordInputV2(param, paramValues)
+                arguments.add(value)
+            }
+            else if( param instanceof ProcessTupleInput ) {
                 List tupleElements = []
                 for( final innerParam : param.getComponents() ) {
                     final value = getValueForInputV2(innerParam, paramValues)
@@ -372,6 +378,27 @@ class ProcessEntryHandler {
         }
 
         return arguments
+    }
+
+    private RecordMap getValueForRecordInputV2(ProcessRecordInput param, Map namedArgs) {
+        final name = param.getName()
+        final value = namedArgs.get(name)
+
+        if( value == null ) {
+            if( param.optional )
+                return null
+            throw new IllegalArgumentException("Missing required parameter: --${name}")
+        }
+
+        if( value !instanceof Map ) {
+            throw new IllegalArgumentException("Parameter '--${name}' expects a record but received: ${value} [${value.class.simpleName}]")
+        }
+
+        final result = new LinkedHashMap<String,Object>(param.getComponents().size())
+        for( final component : param.getComponents() )
+            result.put(component.getName(), getValueForInputV2(component, (Map)value))
+
+        return new RecordMap(result)
     }
 
     /**

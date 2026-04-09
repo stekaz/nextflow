@@ -35,12 +35,17 @@ import nextflow.script.BaseScript
 import nextflow.script.BodyDef
 import nextflow.script.ProcessConfig
 import nextflow.script.ProcessConfigV1
+import nextflow.script.ProcessConfigV2
 import nextflow.script.ScriptType
 import nextflow.script.bundle.ResourcesBundle
 import nextflow.script.params.FileInParam
 import nextflow.script.params.FileOutParam
+import nextflow.script.params.v2.ProcessFileInput
+import nextflow.script.params.v2.ProcessInput
+import nextflow.script.params.v2.ProcessRecordInput
 import nextflow.util.CacheHelper
 import nextflow.util.MemoryUnit
+import nextflow.util.RecordMap
 import spock.lang.Specification
 import spock.lang.Unroll
 /**
@@ -489,6 +494,68 @@ class TaskProcessorTest extends Specification {
         'f*'            | '/some/file.txt'                          | '2..*'    | 'Incorrect number of input files for process `foo` -- expected 2..*, found 1'
         'f*'            | ['/some/file.txt']                        | '2..*'    | 'Incorrect number of input files for process `foo` -- expected 2..*, found 1'
         'f*'            | ['/a','/b']                               | '3'       | 'Incorrect number of input files for process `foo` -- expected 3, found 2'
+    }
+
+    def 'should resolve named record typed inputs' () {
+        given:
+        def executor = Mock(Executor)
+        executor.isForeignFile(_) >> false
+        def session = Mock(Session)
+        def config = new ProcessConfigV2(Mock(BaseScript), null)
+        def processor = Spy(new TaskProcessor(session:session, executor:executor, config:config))
+        def foreignFiles = Mock(FilePorter.Batch)
+        def recordParam = new ProcessRecordInput('sample', [
+            new ProcessInput('id', String, false),
+            new ProcessInput('fastq', Path, false)
+        ], nextflow.script.types.Record, false)
+        config.getInputs().addFile(new ProcessFileInput('input.fastq', { -> sample.fastq }))
+        config.getInputs().getParams().add(recordParam)
+        and:
+        def context = new TaskContext(holder: new HashMap<String, Object>())
+        def task = new TaskRun(
+                name: 'foo',
+                type: ScriptType.SCRIPTLET,
+                context: context,
+                config: new TaskConfig())
+
+        when:
+        def input = new RecordMap(id: 'sample1', fastq: Path.of('/some/sample1.fastq'))
+        processor.resolveTaskInputs(task, [input, null], foreignFiles)
+
+        then:
+        task.inputs[recordParam] instanceof RecordMap
+        task.inputs[recordParam].id == 'sample1'
+        task.inputs[recordParam].fastq.toString() == '/some/sample1.fastq'
+        context.sample.id == 'sample1'
+        context.sample.fastq.toString() == 'input.fastq'
+        task.inputFiles*.stageName == ['input.fastq']
+    }
+
+    def 'should fail for missing required named record fields' () {
+        given:
+        def executor = Mock(Executor)
+        def session = Mock(Session)
+        def config = new ProcessConfigV2(Mock(BaseScript), null)
+        def processor = Spy(new TaskProcessor(session:session, executor:executor, config:config))
+        def foreignFiles = Mock(FilePorter.Batch)
+        def recordParam = new ProcessRecordInput('sample', [
+            new ProcessInput('id', String, false),
+            new ProcessInput('fastq', Path, false)
+        ], nextflow.script.types.Record, false)
+        config.getInputs().getParams().add(recordParam)
+        and:
+        def task = new TaskRun(
+                name: 'foo',
+                type: ScriptType.SCRIPTLET,
+                context: new TaskContext(holder: new HashMap<String, Object>()),
+                config: new TaskConfig())
+
+        when:
+        processor.resolveTaskInputs(task, [new RecordMap(id: 'sample1'), null], foreignFiles)
+
+        then:
+        def e = thrown(ProcessUnrecoverableException)
+        e.message.contains('cannot be null')
     }
 
     def 'should collect output files' () {

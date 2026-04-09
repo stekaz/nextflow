@@ -60,6 +60,10 @@ class ProcessInputsDef implements Cloneable {
         params.add(new ProcessTupleInput(components, type))
     }
 
+    void addRecordParam(String name, List<ProcessInput> components, Class type, boolean optional) {
+        params.add(new ProcessRecordInput(name, components, type, optional))
+    }
+
     void addEnv(String name, Object value) {
         env.put(name, value)
     }

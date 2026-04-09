@@ -284,6 +284,15 @@ public class ProcessToGroovyVisitorV2 {
                     var type = input.getType();
                     return stmt(callThisX("_input_", args(listX(components), classX(type))));
                 }
+                else if( isRecordType(input.getType()) ) {
+                    var name = input.getName();
+                    var components = input.getType().getFields().stream()
+                        .map(this::processInputCtor)
+                        .toList();
+                    var type = input.getType();
+                    var optional = type.getNodeMetaData(ASTNodeMarker.NULLABLE) != null;
+                    return stmt(callThisX("_input_", args(constX(name), listX(components), classX(type), constX(optional))));
+                }
                 else {
                     var name = input.getName();
                     var type = input.getType();
@@ -295,7 +304,7 @@ public class ProcessToGroovyVisitorV2 {
         return block(null, statements);
     }
 
-    private Expression processInputCtor(Parameter param) {
+    private Expression processInputCtor(Variable param) {
         return createX(
             "nextflow.script.params.v2.ProcessInput",
             args(

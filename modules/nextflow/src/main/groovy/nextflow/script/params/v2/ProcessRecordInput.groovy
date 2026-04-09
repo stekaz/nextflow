@@ -20,18 +20,19 @@ import groovy.transform.CompileStatic
 import groovyx.gpars.dataflow.DataflowReadChannel
 
 /**
- * Models a process tuple input, which declares a separate
- * input for each tuple component.
+ * Models a named record input, which binds the received record to a
+ * top-level variable and retains the declared record components for
+ * validation.
  *
  * @author Ben Sherman <bentshermann@gmail.com>
  */
 @CompileStatic
-class ProcessTupleInput extends ProcessInput {
+class ProcessRecordInput extends ProcessInput {
 
     private List<ProcessInput> components
 
-    ProcessTupleInput(List<ProcessInput> components, Class type) {
-        super("", type, false)
+    ProcessRecordInput(String name, List<ProcessInput> components, Class type, boolean optional) {
+        super(name, type, optional)
         this.components = components
     }
 
@@ -40,8 +41,8 @@ class ProcessTupleInput extends ProcessInput {
     }
 
     @Override
-    ProcessTupleInput clone() {
-        final result = (ProcessTupleInput)super.clone()
+    ProcessRecordInput clone() {
+        final result = (ProcessRecordInput)super.clone()
         result.components = new ArrayList<>(components.size())
         for( final component : components )
             result.components.add(component.clone())
