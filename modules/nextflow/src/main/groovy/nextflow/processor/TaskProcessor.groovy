@@ -1846,8 +1846,10 @@ class TaskProcessor {
         }
         final recordParams = param.getComponents()
         final record = value as Map
-        for( final recordParam : recordParams )
+        for( final recordParam : recordParams ) {
+            println([value, param.getName(), recordParam, recordParam.getName(), recordParam.type, record[recordParam.getName()], record[recordParam.getName()].getClass()])
             validateTaskInput(task, recordParam, record[recordParam.getName()], index)
+        }
         task.context.put(param.getName(), value)
         task.setInput(param, value)
     }

@@ -158,6 +158,7 @@ class ProcessDslV2Test extends Specification {
         copy.container == 'debian:wheezy'
         copy.memory == '5 GB'
         copy.getInputs().getParams().size() == 2
+        copy.getInputs().getFiles().size() == 1
         copy.getOutputs().getParams().size() == 1
 
         // original config is not affected
@@ -165,6 +166,7 @@ class ProcessDslV2Test extends Specification {
         config.container == 'ubuntu:latest'
         config.memory == '10 GB'
         config.getInputs().getParams().size() == 2
+        config.getInputs().getFiles().size() == 1
         config.getOutputs().getParams().size() == 1
     }
 

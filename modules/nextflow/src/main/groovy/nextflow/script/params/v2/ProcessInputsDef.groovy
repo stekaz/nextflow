@@ -112,6 +112,11 @@ class ProcessInputsDef implements Cloneable {
         for( final param : params ) {
             result.params.add(param.clone())
         }
+        final copiedEnv = new LinkedHashMap<String,Object>(env.size())
+        copiedEnv.putAll((Map)env)
+        result.env = copiedEnv
+        result.files = new ArrayList<>(files)
+        result.stdin = stdin
         return result
     }
 

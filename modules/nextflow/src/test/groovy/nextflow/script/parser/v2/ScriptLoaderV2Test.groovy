@@ -343,6 +343,46 @@ class ScriptLoaderV2Test extends Dsl2Spec {
         outputs.getFiles().size() == 3
     }
 
+    def 'should preserve implicit record input stagers when cloning process config' () {
+
+        given:
+        def session = new Session()
+        def parser = new ScriptLoaderV2(session)
+
+        def TEXT = '''
+            nextflow.preview.types = true
+
+            record Sample {
+                id: String
+                fastq: Path
+            }
+
+            process hello {
+                input:
+                sample: Sample
+
+                script:
+                """
+                cat ${sample.fastq}
+                """
+            }
+
+            workflow {
+            }
+            '''
+
+        when:
+        parser.parse(TEXT)
+        parser.runScript()
+        def process = ScriptMeta.get(parser.getScript()).getProcess('hello')
+        def config = process.getProcessConfig()
+        def copy = process.cloneWithName('wf:hello').getProcessConfig()
+
+        then:
+        config.getInputs().getFiles().size() == 1
+        copy.getInputs().getFiles().size() == 1
+    }
+
     def 'should allow optional param' () {
 
         given:
