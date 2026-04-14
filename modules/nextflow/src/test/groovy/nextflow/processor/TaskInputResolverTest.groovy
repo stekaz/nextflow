@@ -30,6 +30,7 @@ import nextflow.script.params.v2.ProcessFileInput
 import nextflow.script.params.FileInParam
 import nextflow.script.params.InParam
 import nextflow.script.ScriptType
+import nextflow.script.types.Record
 import nextflow.util.ArrayBag
 import nextflow.util.RecordMap
 import spock.lang.Specification
@@ -39,6 +40,11 @@ import spock.lang.Unroll
  * @author Paolo Di Tommaso <paolo.ditommaso@gmail.com>
  */
 class TaskInputResolverTest extends Specification {
+
+    static class SampleRecord implements Record {
+        String id
+        Path bam
+    }
 
     def holdersMap(List<FileHolder> holders) {
         final result = [:]
@@ -169,6 +175,28 @@ class TaskInputResolverTest extends Specification {
         result[0].storePath == value
         result[0].stageName == 'input.bam'
         and:
+        task.context.input.bam.toString() == 'input.bam'
+
+        when: 'staging a file in a named record type'
+        task.context = new TaskContext(holder: [:])
+        task.inputs = [:]
+        and:
+        param = Mock(InParam) { getName() >> 'input' }
+        fileInput = new ProcessFileInput('input.bam', { -> input.bam })
+        value = Path.of('/some/sample2.bam')
+        task.context.put('input', new SampleRecord(id: 'sample2', bam: value))
+        task.setInput(param, task.context.input)
+        result = resolver.resolve(fileInput, value)
+        task.context.put( param.name, resolver.normalizeValue(task.context.input, holdersMap(result)) )
+        then:
+        1 * executor.isForeignFile(_ as Path) >> false
+        and:
+        result.size() == 1
+        result[0].storePath == value
+        result[0].stageName == 'input.bam'
+        and:
+        task.context.input instanceof SampleRecord
+        task.context.input.id == 'sample2'
         task.context.input.bam.toString() == 'input.bam'
     }
 

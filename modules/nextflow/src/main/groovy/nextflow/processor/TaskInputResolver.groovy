@@ -17,6 +17,7 @@
 package nextflow.processor
 
 import java.nio.file.Path
+import java.lang.reflect.Modifier
 import java.util.regex.Matcher
 import java.util.regex.Pattern
 
@@ -30,6 +31,7 @@ import nextflow.file.FileHolder
 import nextflow.file.FilePorter
 import nextflow.file.LogicalDataPath
 import nextflow.script.ScriptType
+import nextflow.script.types.Record as NfRecord
 import nextflow.script.params.FileInParam
 import nextflow.script.params.v2.ProcessFileInput
 import nextflow.util.ArrayBag
@@ -116,7 +118,24 @@ class TaskInputResolver {
             return value instanceof RecordMap ? new RecordMap(normalized as Map<String,?>) : normalized
         }
 
+        if( value instanceof NfRecord ) {
+            return normalizeRecord(value, holders)
+        }
+
         return value
+    }
+
+    private Object normalizeRecord(Object value, Map<Path,FileHolder> holders) {
+        final valueType = value.getClass()
+        final normalized = valueType.getDeclaredConstructor().newInstance()
+        for( final field : valueType.getDeclaredFields() ) {
+            final modifiers = field.getModifiers()
+            if( Modifier.isStatic(modifiers) || field.isSynthetic() || field.getName() == 'metaClass' )
+                continue
+            field.setAccessible(true)
+            field.set(normalized, normalizeValue(field.get(value), holders))
+        }
+        return normalized
     }
 
     private Path normalizePath(Path value, Map<Path,FileHolder> holders) {
