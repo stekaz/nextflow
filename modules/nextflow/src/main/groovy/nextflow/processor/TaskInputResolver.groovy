@@ -31,9 +31,9 @@ import nextflow.file.FileHolder
 import nextflow.file.FilePorter
 import nextflow.file.LogicalDataPath
 import nextflow.script.ScriptType
-import nextflow.script.types.Record as NfRecord
 import nextflow.script.params.FileInParam
 import nextflow.script.params.v2.ProcessFileInput
+import nextflow.script.types.Record as NfRecord
 import nextflow.util.ArrayBag
 import nextflow.util.BlankSeparatedList
 import nextflow.util.RecordMap
@@ -113,9 +113,13 @@ class TaskInputResolver {
             return value.collect { el -> normalizeValue(el, holders) }
         }
 
-        if( value instanceof Map ) {
+        if( value instanceof RecordMap ) {
             final normalized = value.collectEntries { k, v -> [k, normalizeValue(v, holders)] }
-            return value instanceof RecordMap ? new RecordMap(normalized as Map<String,?>) : normalized
+            return new RecordMap(normalized as Map<String,?>)
+        }
+
+        if( value instanceof Map ) {
+            return value.collectEntries { k, v -> [k, normalizeValue(v, holders)] }
         }
 
         if( value instanceof NfRecord ) {
@@ -126,22 +130,44 @@ class TaskInputResolver {
     }
 
     private Object normalizeRecord(Object value, Map<Path,FileHolder> holders) {
-        final valueType = value.getClass()
-        final normalized = valueType.getDeclaredConstructor().newInstance()
-        for( final field : valueType.getDeclaredFields() ) {
-            final modifiers = field.getModifiers()
-            if( Modifier.isStatic(modifiers) || field.isSynthetic() || field.getName() == 'metaClass' )
+        final type = value.getClass()
+        final ctor = type.getDeclaredConstructor()
+        ctor.setAccessible(true)
+        final copy = ctor.newInstance()
+    
+        for( final field : type.getDeclaredFields() ) {
+            final mods = field.getModifiers()
+            if( Modifier.isStatic(mods) || field.isSynthetic() || field.name == 'metaClass' )
                 continue
             field.setAccessible(true)
-            field.set(normalized, normalizeValue(field.get(value), holders))
+            field.set(copy, normalizeValue(field.get(value), holders))
         }
-        return normalized
+    
+        return copy
     }
 
     private Path normalizePath(Path value, Map<Path,FileHolder> holders) {
-        return holders.containsKey(value)
-            ? new TaskPath(holders[value])
-            : value
+        log.warn "NORMALIZE path value=${value} class=${value?.getClass()?.getName()} holderKeys=${holders.keySet()*.toString()}"
+        final direct = holders.get(value)
+        if( direct != null )
+            return new TaskPath(direct)
+
+        for( final entry : holders.entrySet() ) {
+            if( samePath(entry.key, value) )
+                return new TaskPath(entry.value)
+        }
+
+        return value
+    }
+
+    private static boolean samePath(Path a, Path b) {
+        if( a == b )
+            return true
+        if( a == null || b == null )
+            return false
+        if( a.equals(b) )
+            return true
+        return a.toString() == b.toString()
     }
 
     protected List<FileHolder> normalizeInputToFiles( Object obj, int count, boolean coerceToPath ) {

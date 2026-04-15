@@ -1765,10 +1765,18 @@ class TaskProcessor {
         if( declaredInputs.size() != values.size() )
             throw new ProcessUnrecoverableException("Process `$name` declares ${declaredInputs.size()} inputs but received ${values.size()} -- offending value: $values")
 
+        // -- keep the original top-level values for each declared input parameter
+        final Map<ProcessInput,Object> topLevelValues = new LinkedHashMap<>(declaredInputs.getParams().size())
+
         // -- add input params to task context
         for( int i = 0; i < declaredInputs.getParams().size(); i++ ) {
             final param = declaredInputs.getParams()[i]
             final value = values[i]
+
+            log.warn "INPUT param class=${param.getClass().getName()} name=${param.getName()} type=${param.getType()?.getName()} valueClass=${value?.getClass()?.getName()}"
+
+            topLevelValues.put(param, value)
+
             if( param instanceof ProcessTupleInput && param.getType() == Record.class )
                 assignTaskRecordInput(task, param, value, i)
             else if( param instanceof ProcessTupleInput && param.getType() == Tuple.class )
@@ -1803,24 +1811,23 @@ class TaskProcessor {
             resolvedValues.add(value)
         }
 
+        // -- check conflicting file names
+        checkConflicts(task.inputFiles)
+
         // -- normalize input values by replacing source paths with staged paths
         final Map<Path,FileHolder> holders = [:]
         for( final holder : task.inputFiles )
             holders.put(holder.getSourcePath(), holder)
 
+        // -- rebind the top-level declared inputs in the context
         for( final param : declaredInputs.getParams() ) {
-            if( param instanceof ProcessTupleInput ) {
-                for( final innerParam : param.getComponents() ) {
-                    final value = task.inputs[innerParam]
-                    final normalizedValue = resolver.normalizeValue(value, holders)
-                    task.context.put( innerParam.name, normalizedValue )
-                }
+            final rawValue = topLevelValues[param]
+            if( param.getName() == 'vcf_record' ) {
+                log.warn "VCF raw class=${rawValue?.getClass()?.getName()} raw.vcf.class=${rawValue instanceof Map ? rawValue.get('vcf')?.getClass()?.getName() : null} raw.vcf=${rawValue instanceof Map ? rawValue.get('vcf') : null}"
             }
-            else {
-                final value = task.inputs[param]
-                final normalizedValue = resolver.normalizeValue(value, holders)
-                task.context.put( param.name, normalizedValue )
-            }
+            final normalizedValue = resolver.normalizeValue(rawValue, holders)
+            log.warn "REBIND top-level param=${param.getClass().getName()} name=${param.getName()} normalizedClass=${normalizedValue?.getClass()?.getName()}"
+            task.context.put(param.getName(), normalizedValue)
         }
 
         // -- set the delegate map as context in the task config
@@ -1830,17 +1837,36 @@ class TaskProcessor {
 
     @CompileStatic
     private void assignTaskRecordInput(TaskRun task, ProcessTupleInput param, Object value, int index) {
+
+        log.warn "RECORD input param=${param.getClass().getName()} name=${param.getName()} valueClass=${value?.getClass()?.getName()} value=${value}"
+
         if( value == null && !param.optional ) {
             throw new ProcessUnrecoverableException("[${safeTaskName(task)}] input at index ${index} cannot be null")
         }
-        if( value !instanceof RecordMap ) {
-            throw new ProcessUnrecoverableException("[${safeTaskName(task)}] input at index ${index} expected a record but received: ${value} [${value.class.simpleName}]")
+
+        if( value == null )
+            return
+
+        if( value instanceof RecordMap ) {
+            final recordParams = param.getComponents()
+            final record = value as Map
+            for( final recordParam : recordParams ) {
+                assignTaskInput(task, recordParam, record[recordParam.getName()], index)
+            }
+            return
         }
-        final recordParams = param.getComponents()
-        final record = value as Map
-        for( final recordParam : recordParams ) {
-            assignTaskInput(task, recordParam, record[recordParam.getName()], index)
-        }
+
+//        if( value instanceof Record ) {
+//            final recordParams = param.getComponents()
+//            for( final recordParam : recordParams ) {
+//                final fieldName = recordParam.getName()
+//                final fieldValue = value.getProperty(fieldName)
+//                assignTaskInput(task, recordParam, fieldValue, index)
+//            }
+//            return
+//        }
+
+        throw new ProcessUnrecoverableException("[${safeTaskName(task)}] input at index ${index} expected a record but received: ${value} [${value.class.simpleName}]")
     }
 
     @CompileStatic
